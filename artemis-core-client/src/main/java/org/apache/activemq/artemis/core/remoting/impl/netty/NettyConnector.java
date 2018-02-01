@@ -49,6 +49,7 @@ import javax.security.auth.login.LoginContext;
 
 import io.netty.bootstrap.Bootstrap;
 import io.netty.buffer.ByteBuf;
+import io.netty.buffer.ByteBufAllocator;
 import io.netty.buffer.Unpooled;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelDuplexHandler;
@@ -90,13 +91,13 @@ import io.netty.handler.codec.http.HttpVersion;
 import io.netty.handler.codec.http.LastHttpContent;
 import io.netty.handler.codec.http.cookie.ClientCookieDecoder;
 import io.netty.handler.codec.http.cookie.Cookie;
+import io.netty.handler.ssl.SslContext;
 import io.netty.handler.ssl.SslHandler;
 import io.netty.util.AttributeKey;
 import io.netty.util.ResourceLeakDetector;
 import io.netty.util.ResourceLeakDetector.Level;
 import io.netty.util.concurrent.Future;
 import io.netty.util.concurrent.GlobalEventExecutor;
-
 import org.apache.activemq.artemis.api.config.ActiveMQDefaultConfiguration;
 import org.apache.activemq.artemis.api.core.ActiveMQException;
 import org.apache.activemq.artemis.core.client.ActiveMQClientLogger;
@@ -215,6 +216,8 @@ public class NettyConnector extends AbstractConnector {
    private String enabledCipherSuites;
 
    private String enabledProtocols;
+
+   private String sslProvider;
 
    private boolean verifyHost;
 
@@ -354,6 +357,8 @@ public class NettyConnector extends AbstractConnector {
 
          trustAll = ConfigurationHelper.getBooleanProperty(TransportConstants.TRUST_ALL_PROP_NAME, TransportConstants.DEFAULT_TRUST_ALL, configuration);
 
+         sslProvider = ConfigurationHelper.getStringProperty(TransportConstants.SSL_PROVIDER, TransportConstants.DEFAULT_SSL_PROVIDER, configuration);
+
          sniHost = ConfigurationHelper.getStringProperty(TransportConstants.SNIHOST_PROP_NAME, TransportConstants.DEFAULT_SNIHOST_CONFIG, configuration);
 
          kerb5Config = ConfigurationHelper.getStringProperty(TransportConstants.SSL_KRB5_CONFIG_PROP_NAME, TransportConstants.DEFAULT_SSL_KRB5_CONFIG, configuration);
@@ -415,6 +420,13 @@ public class NettyConnector extends AbstractConnector {
       String acceptor = ConfigurationHelper.getStringProperty(TransportConstants.HTTP_UPGRADE_ENDPOINT_PROP_NAME, null, configuration);
       return ", activemqServerName=" + serverName + ", httpUpgradeEndpoint=" + acceptor;
    }
+
+   private String realKeyStorePath;
+   private String realKeyStoreProvider;
+   private String realKeyStorePassword;
+   private String realTrustStorePath;
+   private String realTrustStoreProvider;
+   private String realTrustStorePassword;
 
    @Override
    public synchronized void start() {
@@ -484,16 +496,13 @@ public class NettyConnector extends AbstractConnector {
       bootstrap.option(ChannelOption.SO_REUSEADDR, true);
       channelGroup = new DefaultChannelGroup("activemq-connector", GlobalEventExecutor.INSTANCE);
 
-      final SSLContext context;
       if (sslEnabled) {
          try {
-            if (useDefaultSslContext) {
-               context = SSLContext.getDefault();
-            } else {
+            if (!useDefaultSslContext) {
                // HORNETQ-680 - override the server-side config if client-side system properties are set
-               String realKeyStorePath = keyStorePath;
-               String realKeyStoreProvider = keyStoreProvider;
-               String realKeyStorePassword = keyStorePassword;
+               realKeyStorePath = keyStorePath;
+               realKeyStoreProvider = keyStoreProvider;
+               realKeyStorePassword = keyStorePassword;
                if (System.getProperty(JAVAX_KEYSTORE_PATH_PROP_NAME) != null) {
                   realKeyStorePath = System.getProperty(JAVAX_KEYSTORE_PATH_PROP_NAME);
                }
@@ -511,9 +520,9 @@ public class NettyConnector extends AbstractConnector {
                   realKeyStorePassword = System.getProperty(ACTIVEMQ_KEYSTORE_PASSWORD_PROP_NAME);
                }
 
-               String realTrustStorePath = trustStorePath;
-               String realTrustStoreProvider = trustStoreProvider;
-               String realTrustStorePassword = trustStorePassword;
+               realTrustStorePath = trustStorePath;
+               realTrustStoreProvider = trustStoreProvider;
+               realTrustStorePassword = trustStorePassword;
                if (System.getProperty(JAVAX_TRUSTSTORE_PATH_PROP_NAME) != null) {
                   realTrustStorePath = System.getProperty(JAVAX_TRUSTSTORE_PATH_PROP_NAME);
                }
@@ -530,7 +539,7 @@ public class NettyConnector extends AbstractConnector {
                if (System.getProperty(ACTIVEMQ_TRUSTSTORE_PASSWORD_PROP_NAME) != null) {
                   realTrustStorePassword = System.getProperty(ACTIVEMQ_TRUSTSTORE_PASSWORD_PROP_NAME);
                }
-               context = SSLSupport.createContext(realKeyStoreProvider, realKeyStorePath, realKeyStorePassword, realTrustStoreProvider, realTrustStorePath, realTrustStorePassword, trustAll, crlPath);
+
             }
          } catch (Exception e) {
             close();
@@ -538,14 +547,12 @@ public class NettyConnector extends AbstractConnector {
             ise.initCause(e);
             throw ise;
          }
-      } else {
-         context = null; // Unused
       }
 
-      if (context != null && useServlet) {
-         // TODO: Fix me
-         //bootstrap.setOption("sslContext", context);
-      }
+      //if (context != null && useServlet) {
+      // TODO: Fix me
+      //bootstrap.setOption("sslContext", context);
+      //}
 
       bootstrap.handler(new ChannelInitializer<Channel>() {
          @Override
@@ -553,24 +560,12 @@ public class NettyConnector extends AbstractConnector {
             final ChannelPipeline pipeline = channel.pipeline();
             if (sslEnabled && !useServlet) {
 
-               Subject subject = null;
-               if (kerb5Config != null) {
-                  LoginContext loginContext = new LoginContext(kerb5Config);
-                  loginContext.login();
-                  subject = loginContext.getSubject();
-                  verifyHost = true;
+               SSLEngine engine;
+               if (sslProvider.equals(TransportConstants.OPENSSL_PROVIDER)) {
+                  engine = loadOpenSslEngine(channel.alloc(), realKeyStoreProvider, realKeyStorePath, realKeyStorePassword, realTrustStoreProvider, realTrustStorePath, realTrustStorePassword);
+               } else {
+                  engine = loadJdkSslEngine(useDefaultSslContext, realKeyStoreProvider, realKeyStorePath, realKeyStorePassword, realTrustStoreProvider, realTrustStorePath, realTrustStorePassword);
                }
-
-               SSLEngine engine = Subject.doAs(subject, new PrivilegedExceptionAction<SSLEngine>() {
-                  @Override
-                  public SSLEngine run() {
-                     if (verifyHost) {
-                        return context.createSSLEngine(sniHost != null ? sniHost : host, port);
-                     } else {
-                        return context.createSSLEngine();
-                     }
-                  }
-               });
 
                engine.setUseClientMode(true);
 
@@ -640,7 +635,72 @@ public class NettyConnector extends AbstractConnector {
 
          batchFlusherFuture = scheduledThreadPool.scheduleWithFixedDelay(flusher, batchDelay, batchDelay, TimeUnit.MILLISECONDS);
       }
-      ActiveMQClientLogger.LOGGER.startedNettyConnector(connectorType,  TransportConstants.NETTY_VERSION, host, port);
+      ActiveMQClientLogger.LOGGER.startedNettyConnector(connectorType, TransportConstants.NETTY_VERSION, host, port);
+   }
+
+   private SSLEngine loadJdkSslEngine(boolean useDefaultSslContext,
+                                      String realKeyStoreProvider,
+                                      String realKeyStorePath,
+                                      String realKeyStorePassword,
+                                      String realTrustStoreProvider,
+                                      String realTrustStorePath,
+                                      String realTrustStorePassword) throws Exception {
+      SSLContext context;
+      if (useDefaultSslContext) {
+         context = SSLContext.getDefault();
+      } else {
+         context = SSLSupport.createContext(realKeyStoreProvider, realKeyStorePath, realKeyStorePassword, realTrustStoreProvider, realTrustStorePath, realTrustStorePassword, trustAll, crlPath);
+      }
+      Subject subject = null;
+      if (kerb5Config != null) {
+         LoginContext loginContext = new LoginContext(kerb5Config);
+         loginContext.login();
+         subject = loginContext.getSubject();
+         verifyHost = true;
+      }
+
+      SSLEngine engine = Subject.doAs(subject, new PrivilegedExceptionAction<SSLEngine>() {
+         @Override
+         public SSLEngine run() {
+            if (verifyHost) {
+               return context.createSSLEngine(host, port);
+            } else {
+               return context.createSSLEngine();
+            }
+         }
+      });
+      return engine;
+   }
+
+   private SSLEngine loadOpenSslEngine(ByteBufAllocator alloc,
+                                       String realKeyStoreProvider,
+                                       String realKeyStorePath,
+                                       String realKeyStorePassword,
+                                       String realTrustStoreProvider,
+                                       String realTrustStorePath,
+                                       String realTrustStorePassword) throws Exception {
+
+      SslContext context = SSLSupport.createNettyContext(realKeyStoreProvider, realKeyStorePath, realKeyStorePassword, realTrustStoreProvider, realTrustStorePath, realTrustStorePassword, sslProvider);
+
+      Subject subject = null;
+      if (kerb5Config != null) {
+         LoginContext loginContext = new LoginContext(kerb5Config);
+         loginContext.login();
+         subject = loginContext.getSubject();
+         verifyHost = true;
+      }
+
+      SSLEngine engine = Subject.doAs(subject, new PrivilegedExceptionAction<SSLEngine>() {
+         @Override
+         public SSLEngine run() {
+            if (verifyHost) {
+               return context.newEngine(alloc, sniHost != null ? sniHost : host, port);
+            } else {
+               return context.newEngine(alloc);
+            }
+         }
+      });
+      return engine;
    }
 
    @Override
@@ -841,7 +901,7 @@ public class NettyConnector extends AbstractConnector {
        * HTTP upgrade response will be decode by Netty as 2 objects:
        * - 1 HttpObject corresponding to the 101 SWITCHING PROTOCOL headers
        * - 1 EMPTY_LAST_CONTENT
-       *
+       * <p>
        * The HTTP upgrade is successful whne the 101 SWITCHING PROTOCOL has been received (handshakeComplete = true)
        * but the latch is count down only when the following EMPTY_LAST_CONTENT is also received.
        * Otherwise this ChannelHandler would be removed too soon and the ActiveMQChannelHandler would handle the
