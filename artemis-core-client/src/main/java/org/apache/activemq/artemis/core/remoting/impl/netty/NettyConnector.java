@@ -33,6 +33,7 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.CountDownLatch;
@@ -40,6 +41,7 @@ import java.util.concurrent.Executor;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
+import java.util.stream.Stream;
 
 import javax.net.ssl.SSLContext;
 import javax.net.ssl.SSLEngine;
@@ -500,48 +502,21 @@ public class NettyConnector extends AbstractConnector {
          try {
             if (!useDefaultSslContext) {
                // HORNETQ-680 - override the server-side config if client-side system properties are set
-               if (System.getProperty(JAVAX_KEYSTORE_PATH_PROP_NAME) != null || System.getProperty(ACTIVEMQ_KEYSTORE_PATH_PROP_NAME) != null) {
-                  if (System.getProperty(JAVAX_KEYSTORE_PATH_PROP_NAME) != null) {
-                     realKeyStorePath = System.getProperty(JAVAX_KEYSTORE_PATH_PROP_NAME);
-                  } else {
-                     realKeyStorePath = System.getProperty(ACTIVEMQ_KEYSTORE_PATH_PROP_NAME);
-                  }
-               } else {
-                  realKeyStorePath = keyStorePath;
-               }
-               if (System.getProperty(JAVAX_KEYSTORE_PASSWORD_PROP_NAME) != null || System.getProperty(ACTIVEMQ_KEYSTORE_PASSWORD_PROP_NAME) != null) {
-                  if (System.getProperty(JAVAX_KEYSTORE_PASSWORD_PROP_NAME) != null) {
-                     realKeyStorePassword = System.getProperty(JAVAX_KEYSTORE_PASSWORD_PROP_NAME);
-                  } else {
-                     realKeyStorePassword = System.getProperty(ACTIVEMQ_KEYSTORE_PASSWORD_PROP_NAME);
-                  }
-               } else {
-                  realKeyStorePassword = keyStorePassword;
-               }
+
+               realKeyStorePath = Stream.of(System.getProperty(JAVAX_KEYSTORE_PATH_PROP_NAME), System.getProperty(ACTIVEMQ_KEYSTORE_PATH_PROP_NAME), keyStorePath).filter(Objects::nonNull).findFirst().orElse(null);
+
+               realKeyStorePassword = Stream.of(System.getProperty(JAVAX_KEYSTORE_PASSWORD_PROP_NAME), System.getProperty(ACTIVEMQ_KEYSTORE_PASSWORD_PROP_NAME), keyStorePassword).filter(Objects::nonNull).findFirst().orElse(null);
+
                if (System.getProperty(ACTIVEMQ_KEYSTORE_PROVIDER_PROP_NAME) != null) {
                   realKeyStoreProvider = System.getProperty(ACTIVEMQ_KEYSTORE_PROVIDER_PROP_NAME);
                } else {
                   realKeyStoreProvider = keyStoreProvider;
                }
 
-               if (System.getProperty(JAVAX_TRUSTSTORE_PATH_PROP_NAME) != null || System.getProperty(ACTIVEMQ_TRUSTSTORE_PATH_PROP_NAME) != null) {
-                  if (System.getProperty(JAVAX_TRUSTSTORE_PATH_PROP_NAME) != null) {
-                     realTrustStorePath = System.getProperty(JAVAX_TRUSTSTORE_PATH_PROP_NAME);
-                  } else {
-                     realTrustStorePath = System.getProperty(ACTIVEMQ_TRUSTSTORE_PATH_PROP_NAME);
-                  }
-               } else {
-                  realTrustStorePath = trustStorePath;
-               }
-               if (System.getProperty(JAVAX_TRUSTSTORE_PASSWORD_PROP_NAME) != null || System.getProperty(ACTIVEMQ_TRUSTSTORE_PASSWORD_PROP_NAME) != null) {
-                  if (System.getProperty(JAVAX_TRUSTSTORE_PASSWORD_PROP_NAME) != null) {
-                     realTrustStorePassword = System.getProperty(JAVAX_TRUSTSTORE_PASSWORD_PROP_NAME);
-                  } else {
-                     realTrustStorePassword = System.getProperty(ACTIVEMQ_TRUSTSTORE_PASSWORD_PROP_NAME);
-                  }
-               } else {
-                  realTrustStorePassword = trustStorePassword;
-               }
+               realTrustStorePath = Stream.of(System.getProperty(JAVAX_TRUSTSTORE_PATH_PROP_NAME), System.getProperty(ACTIVEMQ_TRUSTSTORE_PATH_PROP_NAME), trustStorePath).filter(Objects::nonNull).findFirst().orElse(null);
+
+               realTrustStorePassword = Stream.of(System.getProperty(JAVAX_TRUSTSTORE_PASSWORD_PROP_NAME), System.getProperty(ACTIVEMQ_TRUSTSTORE_PASSWORD_PROP_NAME), trustStorePassword).filter(Objects::nonNull).findFirst().orElse(null);
+
                if (System.getProperty(ACTIVEMQ_TRUSTSTORE_PROVIDER_PROP_NAME) != null) {
                   realTrustStoreProvider = System.getProperty(ACTIVEMQ_TRUSTSTORE_PROVIDER_PROP_NAME);
                } else {
