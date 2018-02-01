@@ -499,43 +499,15 @@ public class NettyConnector extends AbstractConnector {
       final String realTrustStorePassword;
 
       if (sslEnabled) {
-         try {
-            if (!useDefaultSslContext) {
-               // HORNETQ-680 - override the server-side config if client-side system properties are set
+         // HORNETQ-680 - override the server-side config if client-side system properties are set
 
-               realKeyStorePath = Stream.of(System.getProperty(JAVAX_KEYSTORE_PATH_PROP_NAME), System.getProperty(ACTIVEMQ_KEYSTORE_PATH_PROP_NAME), keyStorePath).filter(Objects::nonNull).findFirst().orElse(null);
+         realKeyStorePath = Stream.of(System.getProperty(JAVAX_KEYSTORE_PATH_PROP_NAME), System.getProperty(ACTIVEMQ_KEYSTORE_PATH_PROP_NAME), keyStorePath).map(v -> useDefaultSslContext ? keyStorePath : v).filter(Objects::nonNull).findFirst().orElse(null);
+         realKeyStorePassword = Stream.of(System.getProperty(JAVAX_KEYSTORE_PASSWORD_PROP_NAME), System.getProperty(ACTIVEMQ_KEYSTORE_PASSWORD_PROP_NAME), keyStorePassword).map(v -> useDefaultSslContext ? keyStorePassword : v).filter(Objects::nonNull).findFirst().orElse(null);
+         realKeyStoreProvider = Stream.of(System.getProperty(ACTIVEMQ_KEYSTORE_PROVIDER_PROP_NAME), keyStoreProvider).map(v -> useDefaultSslContext ? keyStoreProvider : v).filter(Objects::nonNull).findFirst().orElse(null);
 
-               realKeyStorePassword = Stream.of(System.getProperty(JAVAX_KEYSTORE_PASSWORD_PROP_NAME), System.getProperty(ACTIVEMQ_KEYSTORE_PASSWORD_PROP_NAME), keyStorePassword).filter(Objects::nonNull).findFirst().orElse(null);
-
-               if (System.getProperty(ACTIVEMQ_KEYSTORE_PROVIDER_PROP_NAME) != null) {
-                  realKeyStoreProvider = System.getProperty(ACTIVEMQ_KEYSTORE_PROVIDER_PROP_NAME);
-               } else {
-                  realKeyStoreProvider = keyStoreProvider;
-               }
-
-               realTrustStorePath = Stream.of(System.getProperty(JAVAX_TRUSTSTORE_PATH_PROP_NAME), System.getProperty(ACTIVEMQ_TRUSTSTORE_PATH_PROP_NAME), trustStorePath).filter(Objects::nonNull).findFirst().orElse(null);
-
-               realTrustStorePassword = Stream.of(System.getProperty(JAVAX_TRUSTSTORE_PASSWORD_PROP_NAME), System.getProperty(ACTIVEMQ_TRUSTSTORE_PASSWORD_PROP_NAME), trustStorePassword).filter(Objects::nonNull).findFirst().orElse(null);
-
-               if (System.getProperty(ACTIVEMQ_TRUSTSTORE_PROVIDER_PROP_NAME) != null) {
-                  realTrustStoreProvider = System.getProperty(ACTIVEMQ_TRUSTSTORE_PROVIDER_PROP_NAME);
-               } else {
-                  realTrustStoreProvider = trustStoreProvider;
-               }
-            } else {
-               realKeyStorePath = keyStorePath;
-               realKeyStoreProvider = keyStoreProvider;
-               realKeyStorePassword = keyStorePassword;
-               realTrustStorePath = trustStorePath;
-               realTrustStoreProvider = trustStoreProvider;
-               realTrustStorePassword = trustStorePassword;
-            }
-         } catch (Exception e) {
-            close();
-            IllegalStateException ise = new IllegalStateException("Unable to create NettyConnector for " + host + ":" + port);
-            ise.initCause(e);
-            throw ise;
-         }
+         realTrustStorePath = Stream.of(System.getProperty(JAVAX_TRUSTSTORE_PATH_PROP_NAME), System.getProperty(ACTIVEMQ_TRUSTSTORE_PATH_PROP_NAME), trustStorePath).map(v -> useDefaultSslContext ? trustStorePath : v).filter(Objects::nonNull).findFirst().orElse(null);
+         realTrustStorePassword = Stream.of(System.getProperty(JAVAX_TRUSTSTORE_PASSWORD_PROP_NAME), System.getProperty(ACTIVEMQ_TRUSTSTORE_PASSWORD_PROP_NAME), trustStorePassword).map(v -> useDefaultSslContext ? trustStorePassword : v).filter(Objects::nonNull).findFirst().orElse(null);
+         realTrustStoreProvider = Stream.of(System.getProperty(ACTIVEMQ_TRUSTSTORE_PROVIDER_PROP_NAME), trustStoreProvider).map(v -> useDefaultSslContext ? trustStoreProvider : v).filter(Objects::nonNull).findFirst().orElse(null);
       } else {
          realKeyStorePath = null;
          realKeyStoreProvider = null;
