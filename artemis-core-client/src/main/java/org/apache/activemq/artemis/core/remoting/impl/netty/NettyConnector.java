@@ -864,7 +864,7 @@ public class NettyConnector extends AbstractConnector {
        * HTTP upgrade response will be decode by Netty as 2 objects:
        * - 1 HttpObject corresponding to the 101 SWITCHING PROTOCOL headers
        * - 1 EMPTY_LAST_CONTENT
-       * <p>
+       *
        * The HTTP upgrade is successful whne the 101 SWITCHING PROTOCOL has been received (handshakeComplete = true)
        * but the latch is count down only when the following EMPTY_LAST_CONTENT is also received.
        * Otherwise this ChannelHandler would be removed too soon and the ActiveMQChannelHandler would handle the
