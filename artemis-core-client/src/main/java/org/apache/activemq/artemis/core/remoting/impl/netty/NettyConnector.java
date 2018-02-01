@@ -421,13 +421,6 @@ public class NettyConnector extends AbstractConnector {
       return ", activemqServerName=" + serverName + ", httpUpgradeEndpoint=" + acceptor;
    }
 
-   private String realKeyStorePath;
-   private String realKeyStoreProvider;
-   private String realKeyStorePassword;
-   private String realTrustStorePath;
-   private String realTrustStoreProvider;
-   private String realTrustStorePassword;
-
    @Override
    public synchronized void start() {
       if (channelClazz != null) {
@@ -496,50 +489,71 @@ public class NettyConnector extends AbstractConnector {
       bootstrap.option(ChannelOption.SO_REUSEADDR, true);
       channelGroup = new DefaultChannelGroup("activemq-connector", GlobalEventExecutor.INSTANCE);
 
+      final String realKeyStorePath;
+      final String realKeyStoreProvider;
+      final String realKeyStorePassword;
+      final String realTrustStorePath;
+      final String realTrustStoreProvider;
+      final String realTrustStorePassword;
+
       if (sslEnabled) {
          try {
             if (!useDefaultSslContext) {
                // HORNETQ-680 - override the server-side config if client-side system properties are set
+               if (System.getProperty(JAVAX_KEYSTORE_PATH_PROP_NAME) != null || System.getProperty(ACTIVEMQ_KEYSTORE_PATH_PROP_NAME) != null) {
+                  if (System.getProperty(JAVAX_KEYSTORE_PATH_PROP_NAME) != null) {
+                     realKeyStorePath = System.getProperty(JAVAX_KEYSTORE_PATH_PROP_NAME);
+                  } else {
+                     realKeyStorePath = System.getProperty(ACTIVEMQ_KEYSTORE_PATH_PROP_NAME);
+                  }
+               } else {
+                  realKeyStorePath = keyStorePath;
+               }
+               if (System.getProperty(JAVAX_KEYSTORE_PASSWORD_PROP_NAME) != null || System.getProperty(ACTIVEMQ_KEYSTORE_PASSWORD_PROP_NAME) != null) {
+                  if (System.getProperty(JAVAX_KEYSTORE_PASSWORD_PROP_NAME) != null) {
+                     realKeyStorePassword = System.getProperty(JAVAX_KEYSTORE_PASSWORD_PROP_NAME);
+                  } else {
+                     realKeyStorePassword = System.getProperty(ACTIVEMQ_KEYSTORE_PASSWORD_PROP_NAME);
+                  }
+               } else {
+                  realKeyStorePassword = keyStorePassword;
+               }
+               if (System.getProperty(ACTIVEMQ_KEYSTORE_PROVIDER_PROP_NAME) != null) {
+                  realKeyStoreProvider = System.getProperty(ACTIVEMQ_KEYSTORE_PROVIDER_PROP_NAME);
+               } else {
+                  realKeyStoreProvider = keyStoreProvider;
+               }
+
+               if (System.getProperty(JAVAX_TRUSTSTORE_PATH_PROP_NAME) != null || System.getProperty(ACTIVEMQ_TRUSTSTORE_PATH_PROP_NAME) != null) {
+                  if (System.getProperty(JAVAX_TRUSTSTORE_PATH_PROP_NAME) != null) {
+                     realTrustStorePath = System.getProperty(JAVAX_TRUSTSTORE_PATH_PROP_NAME);
+                  } else {
+                     realTrustStorePath = System.getProperty(ACTIVEMQ_TRUSTSTORE_PATH_PROP_NAME);
+                  }
+               } else {
+                  realTrustStorePath = trustStorePath;
+               }
+               if (System.getProperty(JAVAX_TRUSTSTORE_PASSWORD_PROP_NAME) != null || System.getProperty(ACTIVEMQ_TRUSTSTORE_PASSWORD_PROP_NAME) != null) {
+                  if (System.getProperty(JAVAX_TRUSTSTORE_PASSWORD_PROP_NAME) != null) {
+                     realTrustStorePassword = System.getProperty(JAVAX_TRUSTSTORE_PASSWORD_PROP_NAME);
+                  } else {
+                     realTrustStorePassword = System.getProperty(ACTIVEMQ_TRUSTSTORE_PASSWORD_PROP_NAME);
+                  }
+               } else {
+                  realTrustStorePassword = trustStorePassword;
+               }
+               if (System.getProperty(ACTIVEMQ_TRUSTSTORE_PROVIDER_PROP_NAME) != null) {
+                  realTrustStoreProvider = System.getProperty(ACTIVEMQ_TRUSTSTORE_PROVIDER_PROP_NAME);
+               } else {
+                  realTrustStoreProvider = trustStoreProvider;
+               }
+            } else {
                realKeyStorePath = keyStorePath;
                realKeyStoreProvider = keyStoreProvider;
                realKeyStorePassword = keyStorePassword;
-               if (System.getProperty(JAVAX_KEYSTORE_PATH_PROP_NAME) != null) {
-                  realKeyStorePath = System.getProperty(JAVAX_KEYSTORE_PATH_PROP_NAME);
-               }
-               if (System.getProperty(JAVAX_KEYSTORE_PASSWORD_PROP_NAME) != null) {
-                  realKeyStorePassword = System.getProperty(JAVAX_KEYSTORE_PASSWORD_PROP_NAME);
-               }
-
-               if (System.getProperty(ACTIVEMQ_KEYSTORE_PROVIDER_PROP_NAME) != null) {
-                  realKeyStoreProvider = System.getProperty(ACTIVEMQ_KEYSTORE_PROVIDER_PROP_NAME);
-               }
-               if (System.getProperty(ACTIVEMQ_KEYSTORE_PATH_PROP_NAME) != null) {
-                  realKeyStorePath = System.getProperty(ACTIVEMQ_KEYSTORE_PATH_PROP_NAME);
-               }
-               if (System.getProperty(ACTIVEMQ_KEYSTORE_PASSWORD_PROP_NAME) != null) {
-                  realKeyStorePassword = System.getProperty(ACTIVEMQ_KEYSTORE_PASSWORD_PROP_NAME);
-               }
-
                realTrustStorePath = trustStorePath;
                realTrustStoreProvider = trustStoreProvider;
                realTrustStorePassword = trustStorePassword;
-               if (System.getProperty(JAVAX_TRUSTSTORE_PATH_PROP_NAME) != null) {
-                  realTrustStorePath = System.getProperty(JAVAX_TRUSTSTORE_PATH_PROP_NAME);
-               }
-               if (System.getProperty(JAVAX_TRUSTSTORE_PASSWORD_PROP_NAME) != null) {
-                  realTrustStorePassword = System.getProperty(JAVAX_TRUSTSTORE_PASSWORD_PROP_NAME);
-               }
-
-               if (System.getProperty(ACTIVEMQ_TRUSTSTORE_PROVIDER_PROP_NAME) != null) {
-                  realTrustStoreProvider = System.getProperty(ACTIVEMQ_TRUSTSTORE_PROVIDER_PROP_NAME);
-               }
-               if (System.getProperty(ACTIVEMQ_TRUSTSTORE_PATH_PROP_NAME) != null) {
-                  realTrustStorePath = System.getProperty(ACTIVEMQ_TRUSTSTORE_PATH_PROP_NAME);
-               }
-               if (System.getProperty(ACTIVEMQ_TRUSTSTORE_PASSWORD_PROP_NAME) != null) {
-                  realTrustStorePassword = System.getProperty(ACTIVEMQ_TRUSTSTORE_PASSWORD_PROP_NAME);
-               }
-
             }
          } catch (Exception e) {
             close();
@@ -547,12 +561,14 @@ public class NettyConnector extends AbstractConnector {
             ise.initCause(e);
             throw ise;
          }
+      } else {
+         realKeyStorePath = null;
+         realKeyStoreProvider = null;
+         realKeyStorePassword = null;
+         realTrustStorePath = null;
+         realTrustStoreProvider = null;
+         realTrustStorePassword = null;
       }
-
-      //if (context != null && useServlet) {
-      // TODO: Fix me
-      //bootstrap.setOption("sslContext", context);
-      //}
 
       bootstrap.handler(new ChannelInitializer<Channel>() {
          @Override
